@@ -1,126 +1,157 @@
 <template>
   <div class="toolbar">
-    <button class="toolbar-btn" @click="triggerImport">
-      <i class="material-icons">file_upload</i> Импорт
-    </button>
-    <input 
-      type="file" 
-      ref="fileInput" 
-      @change="handleFileChange" 
-      accept=".xlsx,.xls" 
-      style="display: none"
-    >
+    <div class="file-actions">
+      <button @click="triggerImport">
+        <i class="material-icons">file_upload</i> Импорт
+      </button>
+      <input 
+        type="file" 
+        ref="fileInput" 
+        @change="handleImport" 
+        accept=".xlsx,.xls" 
+        style="display: none"
+      >
+      <button @click="$emit('export-excel')">
+        <i class="material-icons">file_download</i> Экспорт
+      </button>
+    </div>
     
-    <button class="toolbar-btn" @click="$emit('export')">
-      <i class="material-icons">file_download</i> Экспорт
-    </button>
-    
-    <button class="toolbar-btn" @click="$emit('add-column')">
-      <i class="material-icons">add</i> Столбец
-    </button>
-    
-    <div class="format-actions">
-      <button class="toolbar-btn" @click="applyFormat({ fontWeight: fontWeight === 'bold' ? 'normal' : 'bold' })">
-        <i class="material-icons">format_bold</i>
+    <div class="format-section">
+      <button 
+        @click="toggleBold" 
+        :class="{ active: currentStyles.fontWeight === 'bold' }"
+      >
+        <span class="icon-bold">B</span>
       </button>
       
-      <button class="toolbar-btn" @click="applyFormat({ textAlign: 'left' })">
-        <i class="material-icons">format_align_left</i>
-      </button>
+      <select v-model="currentStyles.textAlign" @change="updateStyles">
+        <option value="left">По левому краю</option>
+        <option value="center">По центру</option>
+        <option value="right">По правому краю</option>
+      </select>
       
-      <button class="toolbar-btn" @click="applyFormat({ textAlign: 'center' })">
-        <i class="material-icons">format_align_center</i>
-      </button>
+      <input 
+        type="color" 
+        v-model="currentStyles.color" 
+        @change="updateStyles" 
+        title="Цвет текста"
+      >
       
-      <button class="toolbar-btn" @click="applyFormat({ textAlign: 'right' })">
-        <i class="material-icons">format_align_right</i>
-      </button>
+      <input 
+        type="color" 
+        v-model="currentStyles.backgroundColor" 
+        @change="updateStyles" 
+        title="Цвет фона"
+      >
       
-      <input type="color" v-model="colorValue" @change="applyFormat({ color: colorValue })">
-      
-      <select v-model="fontSize" @change="applyFormat({ fontSize: fontSize + 'px' })">
-        <option v-for="size in [8, 10, 12, 14, 16, 18, 20, 24]" :value="size">{{ size }}px</option>
+      <select v-model="currentStyles.fontSize" @change="updateStyles">
+        <option value="12px">12px</option>
+        <option value="14px">14px</option>
+        <option value="16px">16px</option>
+        <option value="18px">18px</option>
+        <option value="20px">20px</option>
       </select>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
+import * as XLSX from 'xlsx'
 
-const emit = defineEmits(['import', 'export', 'format-cell', 'add-column'])
+
+const props = defineProps({
+  currentStyles: {
+    type: Object,
+    default: () => ({
+      fontWeight: 'normal',
+      textAlign: 'left',
+      color: '#000000',
+      backgroundColor: 'transparent',
+      fontSize: '14px'
+    })
+  }
+})
+
+const emit = defineEmits([
+  'apply-styles',
+  'import-data',
+  'export-excel'
+])
+
 const fileInput = ref(null)
-const fontWeight = ref('normal')
-const colorValue = ref('#000000')
-const fontSize = ref(12)
+const currentStyles = ref({ ...props.currentStyles })
+
+watch(() => props.currentStyles, (newStyles) => {
+  currentStyles.value = { ...newStyles }
+}, { deep: true })
 
 const triggerImport = () => {
   fileInput.value.click()
 }
 
-const handleFileChange = (e) => {
+const handleImport = async (e) => {
   const file = e.target.files[0]
-  if (file) {
-    emit('import', file)
+  if (!file) return
+  
+  try {
+    const data = await file.arrayBuffer()
+    const workbook = XLSX.read(data)
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
+    const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 })
+    emit('import-data', jsonData)
+  } catch (error) {
+    console.error('Ошибка импорта:', error)
+    alert('Не удалось загрузить файл')
   }
 }
 
-const applyFormat = (style) => {
-  if (style.fontWeight) {
-    fontWeight.value = style.fontWeight
-  }
-  emit('format-cell', { style })
+const toggleBold = () => {
+  currentStyles.value.fontWeight = currentStyles.value.fontWeight === 'bold' ? 'normal' : 'bold'
+  updateStyles()
+}
+
+const updateStyles = () => {
+  emit('apply-styles', { ...currentStyles.value })
 }
 </script>
 
 <style scoped>
 .toolbar {
+  padding: 10px;
+  background: #f5f5f5;
+  border-bottom: 1px solid #ddd;
+}
+
+.format-section {
   display: flex;
   gap: 10px;
-  padding: 10px;
-  background: #2c3e50;
-  border-bottom: 1px solid #ddd;
   align-items: center;
 }
 
-.toolbar-btn {
+button {
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+button.active {
   background: #42b983;
   color: white;
-  border: none;
+}
+
+.icon-bold {
+  font-weight: bold;
+}
+
+select, input[type="color"] {
+  padding: 5px;
   border-radius: 4px;
-  padding: 8px 12px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.toolbar-btn:hover {
-  background: #369f6e;
-}
-
-.format-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-left: auto;
-}
-
-.material-icons {
-  font-size: 18px;
+  border: 1px solid #ddd;
 }
 
 input[type="color"] {
   width: 30px;
   height: 30px;
-  border: none;
-  cursor: pointer;
-}
-
-select {
-  padding: 5px;
-  border-radius: 4px;
-  border: 1px solid #ddd;
+  padding: 2px;
 }
 </style>
