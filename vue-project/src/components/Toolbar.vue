@@ -59,7 +59,6 @@
 import { ref, watch } from 'vue'
 import * as XLSX from 'xlsx'
 
-
 const props = defineProps({
   currentStyles: {
     type: Object,
@@ -67,7 +66,7 @@ const props = defineProps({
       fontWeight: 'normal',
       textAlign: 'left',
       color: '#000000',
-      backgroundColor: 'transparent',
+      backgroundColor: '',
       fontSize: '14px'
     })
   }

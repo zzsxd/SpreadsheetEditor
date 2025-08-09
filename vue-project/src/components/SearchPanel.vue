@@ -85,6 +85,8 @@ function executeSearch() {
 
 function clearSearch() {
   searchQuery.value = ''
+  matchCase.value = false
+  searchInSelectedColumns.value = false
   emit('search', { query: '', columns: 'all' })
 }
 </script>

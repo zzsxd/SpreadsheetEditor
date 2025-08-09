@@ -1,77 +1,94 @@
 <template>
-  <div 
-    class="excel-grid" 
-    @mousedown="startSelection"
-    @mouseup="endSelection"
-    @mousemove="handleSelection"
-  >
-    <table class="excel-table">
-      <thead>
-        <tr>
-          <th 
-            v-for="col in columns" 
-            :key="col.id"
-            class="header-cell"
-            :style="{ width: col.width + 'px' }"
+  <div class="excel-container">
+    <div 
+      class="excel-grid" 
+      @mousedown="startSelection"
+      @mouseup="endSelection"
+      @mousemove="handleSelection"
+    >
+      <table class="excel-table">
+        <thead>
+          <tr>
+            <th 
+              v-for="col in columns" 
+              :key="col.id"
+              class="header-cell"
+              :style="{ width: col.width + 'px' }"
+            >
+              <div class="header-content">
+                {{ col.name }}
+                <div 
+                  class="resize-handle"
+                  @mousedown.stop="startResize(col, $event)"
+                ></div>
+              </div>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr 
+            v-for="(row, rowIndex) in data" 
+            :key="rowIndex"
+            class="data-row"
+            :data-row-index="rowIndex"
           >
-            <div class="header-content">
-              {{ col.name }}
-              <div 
-                class="resize-handle"
-                @mousedown.stop="startResize(col, $event)"
-              ></div>
-            </div>
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr 
-          v-for="(row, rowIndex) in data" 
-          :key="rowIndex"
-          class="data-row"
-          :data-row-index="rowIndex"
-        >
-          <td 
-            v-for="col in columns" 
-            :key="col.id"
-            class="data-cell"
-            :class="{
-              selected: isSelected(rowIndex, col.id),
-              'selection-area': isInSelectionArea(rowIndex, col.id)
-            }"
-            :style="{
-              width: col.width + 'px',
-              ...getCellStyle(row[col.id])
-            }"
-            :data-col-id="col.id"
-            @click.stop="handleCellClick(rowIndex, col.id, $event)"
-            @dblclick.stop="startEditing(rowIndex, col.id)"
-          >
-            <div class="cell-content">
-              <span v-if="!isEditing(rowIndex, col.id)">
-                {{ row[col.id]?.value || '' }}
-              </span>
-              <input
-                v-else
-                ref="editorInput"
-                type="text"
-                v-model="editingValue"
-                @blur="stopEditing"
-                @keyup.enter="stopEditing"
-                @keyup.esc="cancelEditing"
-                :style="getInputStyle(row[col.id])"
-                class="cell-input"
-              >
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+            <td 
+              v-for="col in columns" 
+              :key="col.id"
+              class="data-cell"
+              :class="{
+                selected: isSelected(rowIndex, col.id),
+                'selection-area': isInSelectionArea(rowIndex, col.id),
+                'text-truncated': shouldTruncate(row[col.id]?.value),
+                'search-match': isSearchMatch(rowIndex, col.id)
+              }"
+              :style="{
+                width: col.width + 'px',
+                ...getCellStyle(row[col.id])
+              }"
+              :data-col-id="col.id"
+              @click.stop="handleCellClick(rowIndex, col.id, $event)"
+              @dblclick.stop="startEditing(rowIndex, col.id)"
+              @mouseenter="showTooltipIfNeeded($event, row[col.id]?.value)"
+              @mouseleave="hideTooltip"
+            >
+              <div class="cell-content">
+                <span v-if="!isEditing(rowIndex, col.id)">
+                  {{ row[col.id]?.value || '' }}
+                </span>
+                <input
+                  v-else
+                  ref="editorInput"
+                  type="text"
+                  v-model="editingValue"
+                  @blur="stopEditing"
+                  @keyup.enter="stopEditing"
+                  @keyup.esc="cancelEditing"
+                  :style="getInputStyle(row[col.id])"
+                  class="cell-input"
+                >
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div 
+      v-if="tooltip.visible" 
+      class="tooltip" 
+      :style="{
+        left: `${tooltip.x}px`,
+        top: `${tooltip.y}px`
+      }"
+    >
+      {{ tooltip.text }}
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, computed } from 'vue'
 
 const props = defineProps({
   data: {
@@ -83,6 +100,10 @@ const props = defineProps({
     required: true
   },
   selectedCells: {
+    type: Array,
+    default: () => []
+  },
+  searchResults: {
     type: Array,
     default: () => []
   }
@@ -99,6 +120,12 @@ const editingCell = ref(null)
 const editingValue = ref('')
 const isSelecting = ref(false)
 const selectionStart = ref(null)
+const tooltip = ref({
+  visible: false,
+  text: '',
+  x: 0,
+  y: 0
+})
 
 // Редактирование ячеек
 const startEditing = async (rowIndex, colId) => {
@@ -133,32 +160,33 @@ const startSelection = (e) => {
   const cell = getCellFromEvent(e)
   if (!cell) return
 
-  isSelecting.value = true
-  selectionStart.value = cell
-
+  // Ctrl/Cmd + клик - добавить/удалить из выделения
   if (e.ctrlKey || e.metaKey) {
-    // Добавляем к существующему выделению
     const existingIndex = props.selectedCells.findIndex(
       c => c.rowIndex === cell.rowIndex && c.colId === cell.colId
     )
     
     if (existingIndex >= 0) {
-      // Удаляем если уже выделена
       const newSelection = [...props.selectedCells]
       newSelection.splice(existingIndex, 1)
       emit('update:selected-cells', newSelection)
     } else {
-      // Добавляем если не выделена
       emit('update:selected-cells', [...props.selectedCells, cell])
     }
-  } else if (e.shiftKey && props.selectedCells.length > 0) {
-    // Выделяем диапазон
+    return
+  }
+
+  // Shift + клик - выделить диапазон
+  if (e.shiftKey && props.selectedCells.length > 0) {
     const lastSelected = props.selectedCells[props.selectedCells.length - 1]
     updateSelectionArea(lastSelected, cell)
-  } else {
-    // Новое выделение
-    emit('update:selected-cells', [cell])
+    return
   }
+
+  // Обычный клик - новое выделение
+  isSelecting.value = true
+  selectionStart.value = cell
+  emit('update:selected-cells', [cell])
 }
 
 const handleSelection = (e) => {
@@ -175,8 +203,7 @@ const endSelection = () => {
 }
 
 const handleCellClick = (rowIndex, colId, event) => {
-  // Обработка кликов уже происходит в startSelection
-  // Эта функция нужна только для stopPropagation
+  event.stopPropagation()
 }
 
 const getCellFromEvent = (e) => {
@@ -185,7 +212,7 @@ const getCellFromEvent = (e) => {
   
   const rowElement = cellElement.parentElement
   const rowIndex = parseInt(rowElement.dataset.rowIndex)
-  const colId = parseInt(cellElement.dataset.colId)
+  const colId = cellElement.dataset.colId
   
   return { rowIndex, colId }
 }
@@ -193,13 +220,13 @@ const getCellFromEvent = (e) => {
 const updateSelectionArea = (startCell, endCell) => {
   const startRow = Math.min(startCell.rowIndex, endCell.rowIndex)
   const endRow = Math.max(startCell.rowIndex, endCell.rowIndex)
-  const startCol = Math.min(startCell.colId, endCell.colId)
-  const endCol = Math.max(startCell.colId, endCell.colId)
+  const startCol = Math.min(parseInt(startCell.colId), parseInt(endCell.colId))
+  const endCol = Math.max(parseInt(startCell.colId), parseInt(endCell.colId))
 
   const selected = []
   for (let row = startRow; row <= endRow; row++) {
     for (let col = startCol; col <= endCol; col++) {
-      selected.push({ rowIndex: row, colId: col })
+      selected.push({ rowIndex: row, colId: col.toString() })
     }
   }
   
@@ -208,44 +235,72 @@ const updateSelectionArea = (startCell, endCell) => {
 
 const isSelected = (rowIndex, colId) => {
   return props.selectedCells.some(
-    cell => cell.rowIndex === rowIndex && cell.colId === colId
+    cell => cell.rowIndex === rowIndex && cell.colId === colId.toString()
   )
 }
 
 const isInSelectionArea = (rowIndex, colId) => {
   if (!isSelecting.value || !selectionStart.value) return false
   
-  const currentCell = getCurrentHoveredCell()
-  if (!currentCell) return false
-  
-  const startRow = Math.min(selectionStart.value.rowIndex, currentCell.rowIndex)
-  const endRow = Math.max(selectionStart.value.rowIndex, currentCell.rowIndex)
-  const startCol = Math.min(selectionStart.value.colId, currentCell.colId)
-  const endCol = Math.max(selectionStart.value.colId, currentCell.colId)
+  const startRow = Math.min(selectionStart.value.rowIndex, rowIndex)
+  const endRow = Math.max(selectionStart.value.rowIndex, rowIndex)
+  const startCol = Math.min(parseInt(selectionStart.value.colId), parseInt(colId))
+  const endCol = Math.max(parseInt(selectionStart.value.colId), parseInt(colId))
   
   return rowIndex >= startRow && rowIndex <= endRow &&
-         colId >= startCol && colId <= endCol
+         parseInt(colId) >= startCol && parseInt(colId) <= endCol
 }
 
-const getCurrentHoveredCell = () => {
-  // В реальном проекте нужно отслеживать текущую позицию мыши
-  // Здесь упрощенная реализация
-  return selectionStart.value
+const isSearchMatch = (rowIndex, colId) => {
+  return props.searchResults.some(
+    cell => cell.rowIndex === rowIndex && cell.colId === colId.toString()
+  )
+}
+
+// Автоскрытие длинного текста
+const shouldTruncate = (text) => {
+  if (!text) return false
+  return text.length > 20
+}
+
+// Подсказки для обрезанного текста
+const showTooltipIfNeeded = (event, text) => {
+  if (!shouldTruncate(text)) return
+  
+  const cell = event.target.closest('.data-cell')
+  if (!cell) return
+  
+  const cellRect = cell.getBoundingClientRect()
+  tooltip.value = {
+    visible: true,
+    text,
+    x: cellRect.left,
+    y: cellRect.bottom
+  }
+}
+
+const hideTooltip = () => {
+  tooltip.value.visible = false
 }
 
 // Стили ячеек
 const getCellStyle = (cellData) => {
+  const style = cellData?.style || {}
   return {
-    fontWeight: cellData?.style?.fontWeight || 'normal',
-    textAlign: cellData?.style?.textAlign || 'left',
-    color: cellData?.style?.color || '#000000',
-    backgroundColor: cellData?.style?.backgroundColor || 'transparent',
-    fontSize: cellData?.style?.fontSize || '14px'
+    fontWeight: style.fontWeight || 'normal',
+    textAlign: style.textAlign || 'left',
+    color: style.color || '#000000',
+    backgroundColor: style.backgroundColor || '',
+    fontSize: style.fontSize || '14px'
   }
 }
 
 const getInputStyle = (cellData) => {
-  return getCellStyle(cellData)
+  return {
+    ...getCellStyle(cellData),
+    width: '100%',
+    height: '100%'
+  }
 }
 
 // Изменение размера столбцов
@@ -256,23 +311,34 @@ const startResize = (column, e) => {
   
   const doResize = (moveEvent) => {
     const newWidth = startWidth + (moveEvent.clientX - startX)
-    emit('resize-column', { 
-      colId: column.id, 
-      width: Math.max(30, newWidth) 
-    })
+    if (Math.abs(newWidth - column.width) > 2) {
+      emit('resize-column', { 
+        colId: column.id, 
+        width: Math.max(30, newWidth) 
+      })
+    }
   }
   
   const stopResize = () => {
     document.removeEventListener('mousemove', doResize)
     document.removeEventListener('mouseup', stopResize)
+    document.body.style.cursor = ''
   }
   
+  document.body.style.cursor = 'col-resize'
   document.addEventListener('mousemove', doResize)
   document.addEventListener('mouseup', stopResize, { once: true })
 }
 </script>
 
 <style scoped>
+.excel-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
 .excel-grid {
   width: 100%;
   height: 100%;
@@ -301,6 +367,7 @@ const startResize = (column, e) => {
   justify-content: center;
   align-items: center;
   position: relative;
+  height: 100%;
 }
 
 .resize-handle {
@@ -339,12 +406,21 @@ const startResize = (column, e) => {
   background-color: #f0f7ff;
 }
 
+.data-cell.search-match {
+  background-color: #fffacd;
+}
+
 .cell-content {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+.text-truncated .cell-content {
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .cell-input {
@@ -357,5 +433,19 @@ const startResize = (column, e) => {
   font: inherit;
   color: inherit;
   background: transparent;
+}
+
+.tooltip {
+  position: fixed;
+  background-color: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  z-index: 1000;
+  pointer-events: none;
+  max-width: 300px;
+  word-wrap: break-word;
+  white-space: normal;
 }
 </style>

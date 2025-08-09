@@ -1,4 +1,3 @@
-
 <template>
   <div class="home">
     <Toolbar 
@@ -7,10 +6,15 @@
       @import-data="handleImport"
       @export-excel="exportExcel"
     />
+    <SearchPanel 
+      :columns="columns"
+      @search="handleSearch"
+    />
     <ExcelGrid
       :data="currentData"
       :columns="columns"
       :selected-cells="selectedCells"
+      :search-results="searchResults"
       @update:selected-cells="selectedCells = $event"
       @update-cell="updateCell"
       @resize-column="resizeColumn"
@@ -23,6 +27,7 @@ import { ref, computed } from 'vue'
 import * as XLSX from 'xlsx'
 import Toolbar from '@/components/Toolbar.vue'
 import ExcelGrid from '@/components/ExcelGrid.vue'
+import SearchPanel from '@/components/SearchPanel.vue'
 
 // Инициализация данных
 const sheets = ref([
@@ -30,53 +35,49 @@ const sheets = ref([
     id: 1,
     name: 'Лист1',
     data: Array(20).fill().map((_, row) => ({
-      1: { value: `Ячейка A${row + 1}`, style: {} },
-      2: { value: `Ячейка B${row + 1}`, style: {} },
-      3: { value: `Ячейка C${row + 1}`, style: {} }
+      '1': { value: `Ячейка A${row + 1}`, style: {} },
+      '2': { value: `Ячейка B${row + 1}`, style: {} },
+      '3': { value: `Ячейка C${row + 1}`, style: {} }
     }))
   }
 ])
 
 const activeSheet = ref(1)
 const columns = ref([
-  { id: 1, name: 'A', width: 120 },
-  { id: 2, name: 'B', width: 150 },
-  { id: 3, name: 'C', width: 180 }
+  { id: '1', name: 'A', width: 120 },
+  { id: '2', name: 'B', width: 150 },
+  { id: '3', name: 'C', width: 180 }
 ])
 
-
 const selectedCells = ref([])
+const searchResults = ref([])
+const searchQuery = ref('')
 
 // Вычисляемое свойство для текущих данных
 const currentData = computed(() => {
   const sheet = sheets.value.find(s => s.id === activeSheet.value)
   return sheet ? sheet.data : []
 })
+
 // Получение стилей для выделенных ячеек
 const getCurrentCellStyles = () => {
   if (selectedCells.value.length === 0) return {
     fontWeight: 'normal',
     textAlign: 'left',
     color: '#000000',
-    backgroundColor: 'transparent',
+    backgroundColor: '',
     fontSize: '14px'
   }
   
-  // Берем стили первой выделенной ячейки
   const firstCell = selectedCells.value[0]
   const sheet = sheets.value.find(s => s.id === activeSheet.value)
   return sheet?.data[firstCell.rowIndex]?.[firstCell.colId]?.style || {
     fontWeight: 'normal',
     textAlign: 'left',
     color: '#000000',
-    backgroundColor: 'transparent',
+    backgroundColor: '',
     fontSize: '14px'
   }
-}
-
-// Обновление выбранной ячейки
-const updateSelectedCells = (cells) => {
-  selectedCells.value = cells
 }
 
 // Обновление содержимого ячейки
@@ -86,8 +87,6 @@ const updateCell = ({ rowIndex, colId, value }) => {
     sheet.data[rowIndex][colId].value = value
   }
 }
-
-
 
 // Применение стилей к выделенным ячейкам
 const applyStylesToSelectedCells = (styles) => {
@@ -114,37 +113,75 @@ const resizeColumn = ({ colId, width }) => {
   }
 }
 
+// Поиск по таблице
+const handleSearch = ({ query, matchCase, columns: searchColumns }) => {
+  searchQuery.value = query
+  if (!query.trim()) {
+    searchResults.value = []
+    return
+  }
+
+  const sheet = sheets.value.find(s => s.id === activeSheet.value)
+  if (!sheet) return
+
+  const results = []
+  const searchText = matchCase ? query : query.toLowerCase()
+
+  sheet.data.forEach((row, rowIndex) => {
+    Object.entries(row).forEach(([colId, cell]) => {
+      if (searchColumns !== 'all' && !searchColumns.includes(colId)) return
+      
+      const cellText = matchCase 
+        ? cell.value 
+        : cell.value?.toLowerCase()
+      
+      if (cellText?.includes(searchText)) {
+        results.push({ rowIndex, colId })
+      }
+    })
+  })
+
+  searchResults.value = results
+  if (results.length > 0) {
+    selectedCells.value = [results[0]]
+  }
+}
+
 // Импорт данных из Excel
 const handleImport = (jsonData) => {
   if (!jsonData || !jsonData.length) return
 
-  // Определяем количество колонок
   const maxColumns = Math.max(...jsonData.map(row => row.length))
   
-  // Создаем новые колонки
   const newColumns = Array.from({ length: maxColumns }, (_, i) => ({
-    id: i + 1,
+    id: (i + 1).toString(),
     name: String.fromCharCode(65 + i),
     width: 120
   }))
 
-  // Преобразуем данные
   const newData = jsonData.map(row => {
     const cellData = {}
     newColumns.forEach((col, colIndex) => {
       cellData[col.id] = {
         value: row[colIndex] !== undefined ? String(row[colIndex]) : '',
-        style: {}
+        style: {
+          fontWeight: 'normal',
+          textAlign: 'left',
+          color: '#000000',
+          backgroundColor: '',
+          fontSize: '14px'
+        }
       }
     })
     return cellData
   })
 
-  // Обновляем текущий лист
   const sheet = sheets.value.find(s => s.id === activeSheet.value)
   if (sheet) {
     sheet.data = newData
     columns.value = newColumns
+    selectedCells.value = []
+    searchResults.value = []
   }
 }
 
@@ -153,12 +190,10 @@ const exportExcel = () => {
   const sheet = sheets.value.find(s => s.id === activeSheet.value)
   if (!sheet) return
   
-  // Преобразуем данные
   const exportData = sheet.data.map(row => {
     return columns.value.map(col => row[col.id]?.value || '')
   })
   
-  // Создаем книгу Excel
   const worksheet = XLSX.utils.aoa_to_sheet(exportData)
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name)
