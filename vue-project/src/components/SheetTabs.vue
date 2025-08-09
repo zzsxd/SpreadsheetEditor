@@ -1,38 +1,44 @@
 <template>
-  <div class="sheet-tabs">
-    <div 
-      v-for="sheet in sheets" 
-      :key="sheet.id" 
-      class="sheet-tab"
-      :class="{ active: sheet.id === activeSheet }"
-      @click="$emit('select-sheet', sheet.id)"
-    >
-      <span>{{ sheet.name }}</span>
-      <button 
-        @click.stop="$emit('delete-sheet', sheet.id)" 
-        class="delete-tab"
-        v-if="sheets.length > 1"
-      >
-        ×
-      </button>
-    </div>
-    <button @click="$emit('add-sheet')" class="add-tab">+</button>
-    
-    <div v-if="renamingSheet" class="rename-dialog">
-      <input 
-        type="text" 
-        v-model="newSheetName" 
-        @keyup.enter="confirmRename"
-        ref="renameInput"
-      >
-      <button @click="confirmRename">OK</button>
-      <button @click="cancelRename">Отмена</button>
+  <div class="sheet-tabs-container">
+    <div class="sheet-tabs-scroll">
+      <div class="sheet-tabs">
+        <div 
+          v-for="sheet in sheets" 
+          :key="sheet.id"
+          class="sheet-tab"
+          :class="{ active: sheet.id === activeSheet }"
+          @click="selectSheet(sheet.id)"
+          @dblclick="startRenaming(sheet)"
+        >
+          <span v-if="!isRenaming(sheet.id)">{{ sheet.name }}</span>
+          <input
+            v-else
+            type="text"
+            v-model="renameValue"
+            @blur="confirmRename"
+            @keyup.enter="confirmRename"
+            @keyup.esc="cancelRename"
+            @click.stop
+            ref="renameInput"
+          >
+          <button 
+            class="delete-tab"
+            @click.stop="deleteSheet(sheet.id)"
+            v-if="sheets.length > 1"
+          >
+            ×
+          </button>
+        </div>
+        <button class="add-tab" @click="addSheet">
+          +
+        </button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, nextTick, watch } from 'vue'
+import { ref, nextTick } from 'vue'
 
 const props = defineProps({
   sheets: {
@@ -45,105 +51,154 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['add-sheet', 'rename-sheet', 'select-sheet', 'delete-sheet'])
+const emit = defineEmits([
+  'select-sheet',
+  'add-sheet',
+  'rename-sheet',
+  'delete-sheet'
+])
 
-const renamingSheet = ref(null)
-const newSheetName = ref('')
+const renamingSheetId = ref(null)
+const renameValue = ref('')
 const renameInput = ref(null)
 
-const startRenaming = (sheet) => {
-  renamingSheet.value = sheet.id
-  newSheetName.value = sheet.name
-  nextTick(() => {
-    renameInput.value.focus()
-  })
+const isRenaming = (sheetId) => {
+  return renamingSheetId.value === sheetId
+}
+
+const selectSheet = (sheetId) => {
+  if (!isRenaming(sheetId)) {
+    emit('select-sheet', sheetId)
+  }
+}
+
+const startRenaming = async (sheet) => {
+  renamingSheetId.value = sheet.id
+  renameValue.value = sheet.name
+  await nextTick()
+  renameInput.value[0].focus()
+  renameInput.value[0].select()
 }
 
 const confirmRename = () => {
-  if (newSheetName.value.trim()) {
-    emit('rename-sheet', { 
-      id: renamingSheet.value, 
-      newName: newSheetName.value 
+  if (renameValue.value.trim()) {
+    emit('rename-sheet', {
+      id: renamingSheetId.value,
+      newName: renameValue.value.trim()
     })
   }
   cancelRename()
 }
 
 const cancelRename = () => {
-  renamingSheet.value = null
-  newSheetName.value = ''
+  renamingSheetId.value = null
+  renameValue.value = ''
 }
 
-// Double click to rename
-const handleDoubleClick = (sheet) => {
-  startRenaming(sheet)
+const addSheet = () => {
+  emit('add-sheet')
 }
 
-watch(() => props.sheets, () => {
-  cancelRename()
-}, { deep: true })
+const deleteSheet = (sheetId) => {
+  emit('delete-sheet', sheetId)
+}
 </script>
 
 <style scoped>
-.sheet-tabs {
-  display: flex;
-  border-bottom: 1px solid #ddd;
-  padding: 0 10px;
+.sheet-tabs-container {
   background: #f0f0f0;
+  border-bottom: 1px solid #ddd;
+  overflow: hidden;
+}
+
+.sheet-tabs-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  padding: 0 10px;
+}
+
+.sheet-tabs {
+  display: inline-flex;
+  height: 30px;
 }
 
 .sheet-tab {
-  padding: 8px 15px;
-  cursor: pointer;
+  position: relative;
+  padding: 0 25px 0 15px;
+  margin-right: 2px;
+  background: #e0e0e0;
   border: 1px solid #ddd;
   border-bottom: none;
-  margin-right: 5px;
-  background: white;
+  cursor: pointer;
   display: flex;
   align-items: center;
-  border-radius: 5px 5px 0 0;
-  position: relative;
-  bottom: -1px;
+  justify-content: center;
+  min-width: 80px;
+  max-width: 150px;
+  height: 100%;
+  user-select: none;
 }
 
 .sheet-tab.active {
-  background: #42b983;
-  color: white;
-  border-color: #42b983;
+  background: white;
+  border-top: 2px solid #42b983;
+  padding-top: 0;
+}
+
+.sheet-tab span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet-tab input {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: inherit;
+  font-family: inherit;
 }
 
 .delete-tab {
-  margin-left: 5px;
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
   background: none;
   border: none;
-  color: #999;
   cursor: pointer;
-  padding: 0 5px;
+  color: #999;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
 }
 
 .delete-tab:hover {
-  color: #ff0000;
+  background: #e74c3c;
+  color: white;
 }
 
 .add-tab {
-  padding: 0 10px;
+  padding: 0 15px;
   background: none;
   border: 1px dashed #999;
   margin-left: 5px;
   cursor: pointer;
+  color: #555;
+  font-weight: bold;
+  min-width: 30px;
 }
 
 .add-tab:hover {
   border-color: #42b983;
   color: #42b983;
-}
-
-.rename-dialog {
-  position: absolute;
-  background: white;
-  border: 1px solid #ddd;
-  padding: 10px;
-  z-index: 100;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
 }
 </style>
