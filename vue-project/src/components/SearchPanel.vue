@@ -1,20 +1,39 @@
 <template>
   <div class="search-panel">
-    <div class="search-input-group">
-      <input
-        type="text"
-        v-model="searchQuery"
-        placeholder="Поиск по таблице"
-        @keyup.enter="executeSearch"
+    <div class="search-inputs">
+      <div 
+        v-for="(input, index) in searchInputs" 
+        :key="index"
+        class="search-input-group"
       >
+        <input
+          type="text"
+          v-model="searchInputs[index]"
+          :placeholder="`Поиск ${index + 1}`"
+          @keyup.enter="executeSearch"
+        >
+        <button 
+          class="remove-search-btn"
+          @click="removeSearchInput(index)"
+          v-if="index > 0"
+        >
+          <i class="material-icons">close</i>
+        </button>
+      </div>
+    </div>
+
+    <div class="search-controls">
       <button class="search-btn" @click="executeSearch">
-        <i class="material-icons">search</i>
+        <i class="material-icons">search</i> Поиск
       </button>
-      <button class="clear-btn" @click="clearSearch" v-if="searchQuery">
-        <i class="material-icons">clear</i>
+      <button class="add-search-btn" @click="addSearchInput">
+        <i class="material-icons">add</i> Добавить строку
+      </button>
+      <button class="clear-btn" @click="clearSearch" v-if="hasSearchText">
+        <i class="material-icons">clear</i> Очистить
       </button>
     </div>
-    
+
     <div class="search-options">
       <label class="checkbox-label">
         <input 
@@ -53,7 +72,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 
 const props = defineProps({
   columns: {
@@ -64,30 +83,44 @@ const props = defineProps({
 
 const emit = defineEmits(['search'])
 
-const searchQuery = ref('')
+const searchInputs = ref([''])
 const matchCase = ref(false)
 const searchInSelectedColumns = ref(false)
 const selectedColumns = ref([])
+
+const hasSearchText = computed(() => {
+  return searchInputs.value.some(input => input.trim() !== '')
+})
 
 watch(() => props.columns, (newColumns) => {
   selectedColumns.value = newColumns.map(col => col.id)
 }, { immediate: true })
 
+function addSearchInput() {
+  searchInputs.value.push('')
+}
+
+function removeSearchInput(index) {
+  searchInputs.value.splice(index, 1)
+}
+
 function executeSearch() {
-  if (!searchQuery.value.trim()) return
+  const queries = searchInputs.value
+    .map(input => input.trim())
+    .filter(input => input !== '')
   
   emit('search', {
-    query: searchQuery.value,
+    queries,
     matchCase: matchCase.value,
     columns: searchInSelectedColumns.value ? selectedColumns.value : 'all'
   })
 }
 
 function clearSearch() {
-  searchQuery.value = ''
+  searchInputs.value = ['']
   matchCase.value = false
   searchInSelectedColumns.value = false
-  emit('search', { query: '', columns: 'all' })
+  emit('search', { queries: [], columns: 'all' })
 }
 </script>
 
@@ -98,16 +131,20 @@ function clearSearch() {
   border-bottom: 1px solid #ddd;
 }
 
+.search-inputs {
+  margin-bottom: 10px;
+}
+
 .search-input-group {
   display: flex;
-  margin-bottom: 10px;
+  margin-bottom: 5px;
 }
 
 .search-input-group input {
   flex: 1;
   padding: 8px 12px;
   border: 1px solid #ddd;
-  border-radius: 4px 0 0 4px;
+  border-radius: 4px;
   outline: none;
 }
 
@@ -115,23 +152,47 @@ function clearSearch() {
   border-color: #42b983;
 }
 
-.search-btn, .clear-btn {
-  padding: 0 12px;
+.remove-search-btn {
+  margin-left: 5px;
+  padding: 0 10px;
   border: none;
-  background: #42b983;
+  background: #e74c3c;
   color: white;
+  border-radius: 4px;
   cursor: pointer;
   display: flex;
   align-items: center;
 }
 
+.search-controls {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.search-btn, .add-search-btn, .clear-btn {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
 .search-btn {
-  border-radius: 0 4px 4px 0;
+  background: #42b983;
+  color: white;
+}
+
+.add-search-btn {
+  background: #3498db;
+  color: white;
 }
 
 .clear-btn {
   background: #e74c3c;
-  margin-left: 1px;
+  color: white;
 }
 
 .search-options {

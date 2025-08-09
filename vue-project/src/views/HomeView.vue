@@ -29,7 +29,6 @@ import Toolbar from '@/components/Toolbar.vue'
 import ExcelGrid from '@/components/ExcelGrid.vue'
 import SearchPanel from '@/components/SearchPanel.vue'
 
-// Инициализация данных
 const sheets = ref([
   {
     id: 1,
@@ -51,21 +50,18 @@ const columns = ref([
 
 const selectedCells = ref([])
 const searchResults = ref([])
-const searchQuery = ref('')
 
-// Вычисляемое свойство для текущих данных
 const currentData = computed(() => {
   const sheet = sheets.value.find(s => s.id === activeSheet.value)
   return sheet ? sheet.data : []
 })
 
-// Получение стилей для выделенных ячеек
 const getCurrentCellStyles = () => {
   if (selectedCells.value.length === 0) return {
     fontWeight: 'normal',
     textAlign: 'left',
     color: '#000000',
-    backgroundColor: '',
+    backgroundColor: '#ffffff',
     fontSize: '14px'
   }
   
@@ -75,12 +71,11 @@ const getCurrentCellStyles = () => {
     fontWeight: 'normal',
     textAlign: 'left',
     color: '#000000',
-    backgroundColor: '',
+    backgroundColor: '#ffffff',
     fontSize: '14px'
   }
 }
 
-// Обновление содержимого ячейки
 const updateCell = ({ rowIndex, colId, value }) => {
   const sheet = sheets.value.find(s => s.id === activeSheet.value)
   if (sheet && sheet.data[rowIndex]) {
@@ -88,7 +83,6 @@ const updateCell = ({ rowIndex, colId, value }) => {
   }
 }
 
-// Применение стилей к выделенным ячейкам
 const applyStylesToSelectedCells = (styles) => {
   if (selectedCells.value.length === 0) return
   
@@ -105,7 +99,6 @@ const applyStylesToSelectedCells = (styles) => {
   })
 }
 
-// Изменение размера столбца
 const resizeColumn = ({ colId, width }) => {
   const column = columns.value.find(c => c.id === colId)
   if (column) {
@@ -113,10 +106,9 @@ const resizeColumn = ({ colId, width }) => {
   }
 }
 
-// Поиск по таблице
-const handleSearch = ({ query, matchCase, columns: searchColumns }) => {
-  searchQuery.value = query
-  if (!query.trim()) {
+// Обновленный поиск по нескольким словам
+const handleSearch = ({ queries, matchCase, columns: searchColumns }) => {
+  if (!queries || queries.length === 0) {
     searchResults.value = []
     return
   }
@@ -125,7 +117,6 @@ const handleSearch = ({ query, matchCase, columns: searchColumns }) => {
   if (!sheet) return
 
   const results = []
-  const searchText = matchCase ? query : query.toLowerCase()
 
   sheet.data.forEach((row, rowIndex) => {
     Object.entries(row).forEach(([colId, cell]) => {
@@ -135,7 +126,13 @@ const handleSearch = ({ query, matchCase, columns: searchColumns }) => {
         ? cell.value 
         : cell.value?.toLowerCase()
       
-      if (cellText?.includes(searchText)) {
+      // Проверяем совпадение с любым из запросов
+      const anyMatch = queries.some(query => {
+        const searchWord = matchCase ? query : query.toLowerCase()
+        return cellText?.includes(searchWord)
+      })
+      
+      if (anyMatch) {
         results.push({ rowIndex, colId })
       }
     })
@@ -143,11 +140,10 @@ const handleSearch = ({ query, matchCase, columns: searchColumns }) => {
 
   searchResults.value = results
   if (results.length > 0) {
-    selectedCells.value = [results[0]]
+    selectedCells.value = results // Выделяем все найденные ячейки
   }
 }
 
-// Импорт данных из Excel
 const handleImport = (jsonData) => {
   if (!jsonData || !jsonData.length) return
 
@@ -168,7 +164,7 @@ const handleImport = (jsonData) => {
           fontWeight: 'normal',
           textAlign: 'left',
           color: '#000000',
-          backgroundColor: '',
+          backgroundColor: '#ffffff',
           fontSize: '14px'
         }
       }
@@ -185,7 +181,6 @@ const handleImport = (jsonData) => {
   }
 }
 
-// Экспорт в Excel
 const exportExcel = () => {
   const sheet = sheets.value.find(s => s.id === activeSheet.value)
   if (!sheet) return

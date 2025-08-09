@@ -39,20 +39,20 @@
               :class="{
                 selected: isSelected(rowIndex, col.id),
                 'selection-area': isInSelectionArea(rowIndex, col.id),
-                'text-truncated': shouldTruncate(row[col.id]?.value),
                 'search-match': isSearchMatch(rowIndex, col.id)
               }"
               :style="{
                 width: col.width + 'px',
+                maxWidth: col.width + 'px',
                 ...getCellStyle(row[col.id])
               }"
               :data-col-id="col.id"
               @click.stop="handleCellClick(rowIndex, col.id, $event)"
-              @dblclick.stop="startEditing(rowIndex, col.id)"
+              @dblclick.stop="startEditing(rowIndex, col.id, $event)"
               @mouseenter="showTooltipIfNeeded($event, row[col.id]?.value)"
               @mouseleave="hideTooltip"
             >
-              <div class="cell-content">
+              <div class="cell-content" :class="{ 'text-truncated': shouldTruncate(row[col.id]?.value) }">
                 <span v-if="!isEditing(rowIndex, col.id)">
                   {{ row[col.id]?.value || '' }}
                 </span>
@@ -88,7 +88,7 @@
 </template>
 
 <script setup>
-import { ref, nextTick, computed } from 'vue'
+import { ref, nextTick } from 'vue'
 
 const props = defineProps({
   data: {
@@ -128,11 +128,13 @@ const tooltip = ref({
 })
 
 // Редактирование ячеек
-const startEditing = async (rowIndex, colId) => {
+const startEditing = async (rowIndex, colId, event) => {
   editingCell.value = { rowIndex, colId }
   editingValue.value = props.data[rowIndex][colId]?.value || ''
   await nextTick()
-  editorInput.value?.focus()
+  if (editorInput.value && editorInput.value[0]) {
+    editorInput.value[0].focus()
+  }
 }
 
 const stopEditing = () => {
@@ -290,7 +292,7 @@ const getCellStyle = (cellData) => {
     fontWeight: style.fontWeight || 'normal',
     textAlign: style.textAlign || 'left',
     color: style.color || '#000000',
-    backgroundColor: style.backgroundColor || '',
+    backgroundColor: style.backgroundColor || '#ffffff',
     fontSize: style.fontSize || '14px'
   }
 }
@@ -350,6 +352,7 @@ const startResize = (column, e) => {
   border-collapse: collapse;
   width: max-content;
   min-width: 100%;
+  table-layout: fixed;
 }
 
 .header-cell {
@@ -394,6 +397,7 @@ const startResize = (column, e) => {
   border: 1px solid #ddd;
   vertical-align: middle;
   cursor: cell;
+  overflow: hidden;
 }
 
 .data-cell.selected {
@@ -408,19 +412,19 @@ const startResize = (column, e) => {
 
 .data-cell.search-match {
   background-color: #fffacd;
+  outline: 2px solid #ffcc00;
+  outline-offset: -2px;
 }
 
 .cell-content {
   width: 100%;
   height: 100%;
   overflow: hidden;
+  white-space: nowrap;
 }
 
-.text-truncated .cell-content {
-  white-space: nowrap;
-  overflow: hidden;
+.cell-content.text-truncated {
   text-overflow: ellipsis;
-  max-width: 100%;
 }
 
 .cell-input {
