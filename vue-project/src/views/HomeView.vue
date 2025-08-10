@@ -33,17 +33,16 @@
 <script setup>
 import { ref, computed } from 'vue'
 import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs';
 import SheetTabs from '@/components/SheetTabs.vue'
 import Toolbar from '@/components/Toolbar.vue'
 import ExcelGrid from '@/components/ExcelGrid.vue'
 import SearchPanel from '@/components/SearchPanel.vue'
 
-// Константы для настройки таблицы
 const ROWS_COUNT = 100
 const COLS_COUNT = 26
 const DEFAULT_COL_WIDTH = 120
 
-// Сначала объявляем все переменные
 const nextSheetId = ref(2)
 const sheets = ref([])
 const activeSheet = ref(null)
@@ -51,14 +50,12 @@ const columns = ref([])
 const selectedCells = ref([])
 const searchResults = ref([])
 
-// Инициализируем columns до создания листов
 columns.value = Array.from({ length: COLS_COUNT }, (_, i) => ({
   id: (i + 1).toString(),
   name: String.fromCharCode(65 + i),
   width: DEFAULT_COL_WIDTH
 }))
 
-// Функция создания нового листа (должна быть объявлена после columns)
 function createNewSheet(name) {
   const sheetId = nextSheetId.value++
   return {
@@ -74,22 +71,19 @@ function createNewSheet(name) {
   }
 }
 
-// Теперь инициализируем sheets
 sheets.value = [createNewSheet('Лист1')]
 activeSheet.value = sheets.value[0].id
 
-// Вычисляемые свойства
 const currentData = computed(() => {
   const sheet = sheets.value.find(s => s.id === activeSheet.value)
   return sheet ? sheet.data : []
 })
 
-// Методы для работы с листами
-const selectSheet = (sheetId) => {
-  activeSheet.value = sheetId
-  selectedCells.value = []
-  searchResults.value = []
-}
+const selectSheet = (id) => {
+  // Изменяем эту строку:
+  activeSheet.value = id; // Просто сохраняем ID вместо всего объекта
+};
+
 
 const addSheet = () => {
   const newSheet = createNewSheet()
@@ -118,7 +112,6 @@ const deleteSheet = (sheetId) => {
   }
 }
 
-// Остальные методы остаются без изменений
 const getCurrentCellStyles = () => {
   if (selectedCells.value.length === 0) return {
     fontWeight: 'normal',
@@ -205,52 +198,171 @@ const handleSearch = ({ queries, matchCase, columns: searchColumns }) => {
   }
 }
 
-const handleImport = (jsonData) => {
-  if (!jsonData || !jsonData.length) return
+const handleImport = async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
 
-  const maxColumns = Math.max(...jsonData.map(row => row.length))
-  
-  const newColumns = Array.from({ length: maxColumns }, (_, i) => ({
-    id: (i + 1).toString(),
-    name: String.fromCharCode(65 + i),
-    width: DEFAULT_COL_WIDTH
-  }))
+  try {
+    const buffer = await file.arrayBuffer();
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer);
 
-  const newData = jsonData.map(row => {
-    const cellData = {}
-    newColumns.forEach((col, colIndex) => {
-      cellData[col.id] = {
-        value: row[colIndex] !== undefined ? String(row[colIndex]) : '',
-        style: {}
+    // Очищаем существующие листы
+    sheets.value = [];
+
+    workbook.eachSheet((worksheet, sheetId) => {
+      // Создаем массив для данных листа
+      const sheetData = [];
+      const sheetColumns = [];
+      
+      // Определяем количество колонок
+      const columnCount = worksheet.columnCount || COLS_COUNT;
+      
+      // Создаем колонки
+      for (let i = 1; i <= columnCount; i++) {
+        sheetColumns.push({
+          id: i.toString(),
+          name: String.fromCharCode(64 + i), // A, B, C...
+          width: DEFAULT_COL_WIDTH
+        });
       }
-    })
-    return cellData
-  })
 
-  const newSheet = createNewSheet('Импортированный лист')
-  newSheet.data = newData
-  sheets.value.push(newSheet)
-  columns.value = newColumns
-  selectSheet(newSheet.id)
-}
+      // Обрабатываем каждую строку
+      worksheet.eachRow({ includeEmpty: true }, (row, rowIndex) => {
+        const rowData = {};
+        
+        // Обрабатываем каждую ячейку в строке
+        row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+          const colId = colNumber.toString();
+          
+          // Получаем значение ячейки
+          let cellValue = '';
+          if (cell.value !== undefined && cell.value !== null) {
+            // Для формул берем результат вычисления
+            if (cell.formula) {
+              cellValue = cell.result !== undefined ? String(cell.result) : '';
+            } else {
+              cellValue = String(cell.value);
+            }
+          }
+          
+          // Создаем объект ячейки со стилями
+          rowData[colId] = {
+            value: cellValue,
+            style: {
+              fontWeight: cell.font?.bold ? 'bold' : 'normal',
+              textAlign: cell.alignment?.horizontal || 'left',
+              color: cell.font?.color?.argb ? `#${cell.font.color.argb.slice(2)}` : '#000000',
+              backgroundColor: cell.fill?.fgColor?.argb ? `#${cell.fill.fgColor.argb.slice(2)}` : '#FFFFFF',
+              fontSize: cell.font?.size ? `${cell.font.size}px` : '14px'
+            }
+          };
+        });
+        
+        // Заполняем пустые ячейки в строке
+        for (let i = 1; i <= columnCount; i++) {
+          if (!rowData[i.toString()]) {
+            rowData[i.toString()] = { value: '', style: {} };
+          }
+        }
+        
+        sheetData.push(rowData);
+      });
 
-const exportExcel = () => {
-  const workbook = XLSX.utils.book_new()
-  
-  // Экспортируем каждый лист
+      // Создаем новый лист
+      const newSheet = {
+        id: sheetId,
+        name: worksheet.name || `Лист${sheetId}`,
+        data: sheetData,
+        columns: sheetColumns
+      };
+
+      sheets.value.push(newSheet);
+    });
+
+    // Активируем первый лист
+    if (sheets.value.length > 0) {
+      activeSheet.value = sheets.value[0].id;
+      columns.value = [...sheets.value[0].columns];
+    }
+
+  } catch (error) {
+    console.error('Ошибка импорта:', error);
+    alert('Не удалось загрузить файл');
+  } finally {
+    event.target.value = ''; // Сбрасываем значение input для повторной загрузки
+  }
+};
+
+const exportExcel = async () => {
+  const workbook = new ExcelJS.Workbook();
+
   sheets.value.forEach(sheet => {
-    const exportData = sheet.data.map(row => {
-      return columns.value.map(col => row[col.id]?.value || '')
-    })
-    
-    const worksheet = XLSX.utils.aoa_to_sheet(exportData)
-    XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name)
-  })
-  
-  // Сохраняем файл с именем первого листа
-  const fileName = sheets.value[0]?.name || 'workbook'
-  XLSX.writeFile(workbook, `${fileName}.xlsx`)
-}
+    const ws = workbook.addWorksheet(sheet.name);
+
+    // Устанавливаем ширину колонок
+    ws.columns = columns.value.map(col => ({
+      width: Math.min(50, Math.max(5, col.width / 7))
+    }));
+
+    sheet.data.forEach(row => {
+      const excelRow = ws.addRow(columns.value.map(col => row[col.id]?.value || ''));
+
+      columns.value.forEach((col, colIndex) => {
+        const cellData = row[col.id];
+        if (cellData?.style) {
+          const cell = excelRow.getCell(colIndex + 1);
+
+          // Шрифт
+          cell.font = {
+            bold: cellData.style.fontWeight === 'bold',
+            color: cellData.style.color
+              ? { argb: cellData.style.color.replace('#', '') }
+              : undefined,
+            size: cellData.style.fontSize
+              ? parseInt(cellData.style.fontSize)
+              : undefined
+          };
+
+          // Выравнивание
+          if (cellData.style.textAlign) {
+            cell.alignment = {
+              horizontal: cellData.style.textAlign,
+              vertical: 'middle'
+            };
+          }
+
+          // Заливка
+          if (cellData.style.backgroundColor) {
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: cellData.style.backgroundColor.replace('#', '') }
+            };
+          }
+
+          // Границы
+          cell.border = {
+            top: { style: 'thin', color: { argb: '000000' } },
+            bottom: { style: 'thin', color: { argb: '000000' } },
+            left: { style: 'thin', color: { argb: '000000' } },
+            right: { style: 'thin', color: { argb: '000000' } }
+          };
+        }
+      });
+    });
+  });
+
+  // Генерация и скачивание файла
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `${sheets.value[0]?.name || 'таблица'}.xlsx`;
+  link.click();
+};
 </script>
 
 <style scoped>

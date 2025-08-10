@@ -16,21 +16,22 @@
           class="remove-search-btn"
           @click="removeSearchInput(index)"
           v-if="index > 0"
+          title="Удалить строку поиска"
         >
-          <i class="material-icons">close</i>
+          ×
         </button>
       </div>
     </div>
 
     <div class="search-controls">
-      <button class="search-btn" @click="executeSearch">
-        <i class="material-icons">search</i> Поиск
+      <button class="search-btn" @click="executeSearch" title="Начать поиск">
+        Поиск
       </button>
-      <button class="add-search-btn" @click="addSearchInput">
-        <i class="material-icons">add</i> Добавить строку
+      <button class="add-search-btn" @click="addSearchInput" title="Добавить строку поиска">
+        Добавить поиск
       </button>
-      <button class="clear-btn" @click="clearSearch" v-if="hasSearchText">
-        <i class="material-icons">clear</i> Очистить
+      <button class="clear-btn" @click="clearSearch" v-if="hasSearchText" title="Очистить поиск">
+        Очистить
       </button>
     </div>
 
@@ -138,6 +139,7 @@ function clearSearch() {
 .search-input-group {
   display: flex;
   margin-bottom: 5px;
+  align-items: center;
 }
 
 .search-input-group input {
@@ -162,6 +164,13 @@ function clearSearch() {
   cursor: pointer;
   display: flex;
   align-items: center;
+  justify-content: center;
+  height: 32px;
+  width: 32px;
+}
+
+.remove-search-btn:hover {
+  background: #c0392b;
 }
 
 .search-controls {
@@ -185,14 +194,26 @@ function clearSearch() {
   color: white;
 }
 
+.search-btn:hover {
+  background: #369f6b;
+}
+
 .add-search-btn {
   background: #3498db;
   color: white;
 }
 
+.add-search-btn:hover {
+  background: #2980b9;
+}
+
 .clear-btn {
   background: #e74c3c;
   color: white;
+}
+
+.clear-btn:hover {
+  background: #c0392b;
 }
 
 .search-options {
@@ -207,6 +228,7 @@ function clearSearch() {
   align-items: center;
   gap: 5px;
   cursor: pointer;
+  user-select: none;
 }
 
 .checkbox {
@@ -217,6 +239,7 @@ function clearSearch() {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  margin-top: 5px;
 }
 
 .column-checkbox {
@@ -226,9 +249,6 @@ function clearSearch() {
   padding: 3px 8px;
   background: #eee;
   border-radius: 4px;
-}
-
-.material-icons {
-  font-size: 18px;
+  cursor: pointer;
 }
 </style>
