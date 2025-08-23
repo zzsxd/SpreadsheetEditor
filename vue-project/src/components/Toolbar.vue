@@ -30,6 +30,7 @@
         <option value="center">По центру</option>
         <option value="right">По правому краю</option>
       </select>
+
       
       <input 
         type="color" 

@@ -1,5 +1,14 @@
 <template>
   <div class="search-panel">
+    <div v-if="searchResults.length > 0" class="search-navigation">
+      <span>Найдено: {{ searchResults.length }}</span>
+      <button @click="prevResult">◀</button>
+      <span class="current-position">
+        {{ currentIndex + 1 }} / {{ searchResults.length }}
+      </span>
+      <button @click="nextResult">▶</button>
+    </div>
+
     <div class="search-inputs">
       <div 
         v-for="(input, index) in searchInputs" 
@@ -36,14 +45,6 @@
     </div>
 
     <div class="search-options">
-      <label class="checkbox-label">
-        <input 
-          type="checkbox" 
-          v-model="matchCase"
-          class="checkbox"
-        >
-        Учитывать регистр
-      </label>
       
       <label class="checkbox-label">
         <input 
@@ -74,15 +75,18 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
-
 const props = defineProps({
   columns: {
     type: Array,
     required: true
+  },
+  searchResults: {
+    type: Array,
+    default: () => []   // ✅ чтобы не было undefined
   }
 })
 
-const emit = defineEmits(['search'])
+const emit = defineEmits(['search', 'navigate'])
 
 const searchInputs = ref([''])
 const matchCase = ref(false)
@@ -93,9 +97,6 @@ const hasSearchText = computed(() => {
   return searchInputs.value.some(input => input.trim() !== '')
 })
 
-watch(() => props.columns, (newColumns) => {
-  selectedColumns.value = newColumns.map(col => col.id)
-}, { immediate: true })
 
 function addSearchInput() {
   searchInputs.value.push('')
@@ -123,6 +124,21 @@ function clearSearch() {
   searchInSelectedColumns.value = false
   emit('search', { queries: [], columns: 'all' })
 }
+
+const currentIndex = ref(0)
+
+function nextResult() {
+  if (!props.searchResults.length) return
+  currentIndex.value = (currentIndex.value + 1) % props.searchResults.length
+  emit('navigate', props.searchResults[currentIndex.value])
+}
+
+function prevResult() {
+  if (!props.searchResults.length) return
+  currentIndex.value = (currentIndex.value - 1 + props.searchResults.length) % props.searchResults.length
+  emit('navigate', props.searchResults[currentIndex.value])
+}
+
 </script>
 
 <style scoped>
@@ -250,5 +266,12 @@ function clearSearch() {
   background: #eee;
   border-radius: 4px;
   cursor: pointer;
+}
+/* Добавляем стили для отображения текущей позиции */
+.current-position {
+  margin: 0 10px;
+  font-weight: bold;
+  min-width: 50px;
+  text-align: center;
 }
 </style>

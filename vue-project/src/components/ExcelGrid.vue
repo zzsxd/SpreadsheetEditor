@@ -39,26 +39,29 @@
             :data-row-index="rowAbsoluteIndex"
             :style="{ height: rowHeight + 'px' }"
           >
-            <td
-              v-for="col in columns"
-              :key="col.id"
-              class="data-cell"
-              :class="{
-                selected: isSelected(rowAbsoluteIndex, col.id),
-                'selection-area': isInSelectionArea(rowAbsoluteIndex, col.id),
-                'search-match': isSearchMatch(rowAbsoluteIndex, col.id)
-              }"
-              :style="{
-                width: col.width + 'px',
-                maxWidth: col.width + 'px',
-                ...getCellStyle(data[rowAbsoluteIndex]?.[col.id])
-              }"
-              :data-col-id="col.id"
-              @click.stop="handleCellClick(rowAbsoluteIndex, col.id, $event)"
-              @dblclick.stop="startEditing(rowAbsoluteIndex, col.id, $event)"
-              @mouseenter="showTooltipIfNeeded($event, data[rowAbsoluteIndex]?.[col.id]?.value)"
-              @mouseleave="hideTooltip"
-            >
+              <td
+                v-for="col in columns"
+                :key="col.id"
+                class="data-cell"
+                :class="{
+                  selected: isSelected(rowAbsoluteIndex, col.id),
+                  'selection-area': isInSelectionArea(rowAbsoluteIndex, col.id),
+                  'search-match': isSearchMatch(rowAbsoluteIndex, col.id)
+                }"
+                :style="{
+                  width: col.width + 'px',
+                  maxWidth: col.width + 'px',
+                  ...getCellStyle(data[rowAbsoluteIndex]?.[col.id])
+                }"
+                :data-col-id="col.id"
+                @click.stop="handleCellClick(rowAbsoluteIndex, col.id, $event)"
+                @dblclick.stop="startEditing(rowAbsoluteIndex, col.id, $event)"
+                @mouseenter="showTooltipIfNeeded($event, data[rowAbsoluteIndex]?.[col.id]?.value)"
+                @mouseleave="hideTooltip"
+              >
+                  <div v-if="isFirstSearchMatch(rowAbsoluteIndex, col.id)" class="search-indicator">
+                    {{ getSearchMatchIndex(rowAbsoluteIndex, col.id) + 1 }}
+                  </div>
               <div class="cell-content" :class="{ 'text-truncated': shouldTruncate(data[rowAbsoluteIndex]?.[col.id]?.value) }">
                 <template v-if="!isEditing(rowAbsoluteIndex, col.id)">
                   <!-- если есть гиперссылка -->
@@ -159,6 +162,18 @@ const startSelection = (e) => {
   emit('update:selected-cells', [cell])
 }
 
+// Новые вычисляемые свойства и методы для поиска
+const isFirstSearchMatch = (rowIndex, colId) => {
+  const firstMatch = props.searchResults[0]
+  return firstMatch && firstMatch.rowIndex === rowIndex && firstMatch.colId === colId
+}
+
+const getSearchMatchIndex = (rowIndex, colId) => {
+  return props.searchResults.findIndex(
+    result => result.rowIndex === rowIndex && result.colId === colId
+  )
+}
+
 const handleSelection = (e) => {
   if (!isSelecting.value || !selectionStart.value) return
   const cell = getCellFromEvent(e); if (cell) updateSelectionArea(selectionStart.value, cell)
@@ -215,8 +230,10 @@ const getCellStyle = (cellData) => {
     fontWeight: st.fontWeight || 'normal',
     textAlign: st.textAlign || 'left',
     color: st.color || '#000000',
-    backgroundColor: st.backgroundColor || '#ffffff',
-    fontSize: st.fontSize || '14px'
+    backgroundColor: st.backgroundColor || 'transparent',
+    fontSize: st.fontSize || '14px',
+    fontStyle: st.fontStyle || 'normal',
+    textDecoration: st.textDecoration || 'none'
   }
 }
 const getInputStyle = (cellData) => ({ ...getCellStyle(cellData), width: '100%', height: '100%' })
@@ -278,14 +295,66 @@ onMounted(() => {
 .resize-handle { position: absolute; right: 0; top: 0; width: 5px; height: 100%; cursor: col-resize; background-color: rgba(0,0,0,.1); }
 .resize-handle:hover { background-color: #42b983; }
 .data-row { height: 30px; }
-.data-cell { position: relative; padding: 4px 8px; border: 1px solid #ddd; vertical-align: middle; cursor: cell; overflow: hidden; }
-.data-cell.selected { background-color: #e6f3ff; outline: 2px solid #42b983; outline-offset: -2px; }
-.data-cell.selection-area { background-color: #f0f7ff; }
-.data-cell.search-match { background-color: #fffacd; outline: 2px solid #ffcc00; outline-offset: -2px; }
+.data-cell {
+  position: relative;
+  padding: 4px 8px;
+  border: 1px solid #ddd;
+  vertical-align: middle;
+  cursor: cell;
+  overflow: hidden;
+  background-color: inherit; /* Добавлено */
+}
+
+.data-cell.selected {
+  background-color: #e6f3ff !important; /* Добавлено !important */
+  outline: 2px solid #42b983;
+  outline-offset: -2px;
+}
+
+.data-cell.selection-area {
+  background-color: #f0f7ff !important; /* Добавлено !important */
+}
+
+.data-cell.search-match {
+  background-color: #fffacd !important; /* Добавлено !important */
+  outline: 2px solid #ffcc00;
+  outline-offset: -2px;
+}
 .cell-content { width: 100%; height: 100%; overflow: hidden; white-space: nowrap; }
 .cell-content.text-truncated { text-overflow: ellipsis; }
 .cell-input { width: 100%; height: 100%; border: none; outline: none; padding: 0; margin: 0; font: inherit; color: inherit; background: transparent; }
 .tooltip { position: fixed; background-color: rgba(0,0,0,.8); color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px; z-index: 1000; pointer-events: none; max-width: 300px; word-wrap: break-word; white-space: normal; }
 .spacer-row td { border: 0 !important; }
 a { color: inherit; text-decoration: underline; }
+
+/* Добавляем стили для индикатора поиска */
+.search-indicator {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: #ffcc00;
+  color: #000;
+  font-size: 10px;
+  font-weight: bold;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+/* Улучшаем стиль для ячеек с совпадениями поиска */
+.data-cell.search-match {
+  background-color: #fffacd;
+  position: relative;
+  box-shadow: 0 0 0 2px #ffcc00 inset;
+}
+
+/* Увеличиваем z-index для выделенных ячеек с поиском */
+.data-cell.search-match.selected {
+  z-index: 3;
+  box-shadow: 0 0 0 2px #42b983, 0 0 0 4px #ffcc00;
+}
 </style>
